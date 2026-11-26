@@ -80,12 +80,18 @@ function Get-Sha256($path) {
   return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Backup-File($path) {
+# Backups live under data/, never inside resources/seed: the launcher inventories every
+# file under seed except integrity.json, so a *.bak-* left there is an unrecorded file and
+# fails verification ("desktop seed: integrity verification failed") before anything loads.
+function Backup-File($path, $root) {
   if (-not (Test-Path -LiteralPath $path)) { return }
-  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $backup = "$path.bak-$stamp"
-  if (-not (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $path -Destination $backup -Force }
-  Write-Note "backup: $([System.IO.Path]::GetFileName($backup))"
+  $relative = if ($root) { $path.Substring($root.Length).TrimStart('\') } else { [System.IO.Path]::GetFileName($path) }
+  $backup = Join-Path $script:backupRoot $relative
+  if (-not (Test-Path -LiteralPath $backup)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backup) | Out-Null
+    Copy-Item -LiteralPath $path -Destination $backup -Force
+  }
+  Write-Note "backup: $backup"
 }
 
 # ------------------------------------------------------------------ locate ---
@@ -96,6 +102,7 @@ if (-not (Test-Path -LiteralPath $HarScienceRoot)) {
 $seed = Join-Path $HarScienceRoot 'resources\seed'
 $profile = Join-Path $HarScienceRoot 'data\profiles\desktop'
 $dataHome = Join-Path $HarScienceRoot 'data'
+$script:backupRoot = Join-Path $dataHome ("backups\agent-claudecode\" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
 if (-not $PluginTgz) {
   $PluginTgz = Get-ChildItem -LiteralPath $PSScriptRoot -Filter "$PackageName-*.tgz" -ErrorAction SilentlyContinue |
@@ -142,7 +149,7 @@ try {
     if ($DryRun) {
       Write-Note "would set dependencies.$PackageName = $spec and add the bundle entry"
     } else {
-      Backup-File $seedPackages
+      Backup-File $seedPackages $HarScienceRoot
       $deps = @{}
       foreach ($property in $seedManifest.dependencies.PSObject.Properties) { $deps[$property.Name] = $property.Value }
       $deps[$PackageName] = $spec
@@ -175,7 +182,7 @@ try {
       if ($already -match "node_modules/$PackageName/") {
         Write-Note 'already present; the tarball is left untouched'
       } else {
-        Backup-File $seedTar
+        Backup-File $seedTar $HarScienceRoot
         $payload = Join-Path $stage 'payload'
         New-Item -ItemType Directory -Force -Path (Join-Path $payload "node_modules\$PackageName") | Out-Null
         Copy-Item -Path (Join-Path $stagedPackage '*') -Destination (Join-Path $payload "node_modules\$PackageName") -Recurse -Force
@@ -192,7 +199,7 @@ try {
     if ($DryRun) {
       Write-Note 'would recompute the records for package.json, profile-files.tar and plugins/<tgz>'
     } else {
-      Backup-File $seedIntegrity
+      Backup-File $seedIntegrity $HarScienceRoot
       $integrity = Read-Json $seedIntegrity
       $records = @{}
       foreach ($record in $integrity.files) { $records[$record.path] = $record }
@@ -229,7 +236,7 @@ try {
       if ($DryRun) {
         Write-Note "would set dependencies.$PackageName = $spec and add the bundle entry"
       } else {
-        Backup-File $profileManifest
+        Backup-File $profileManifest $HarScienceRoot
         $deps = @{}
         foreach ($property in $profileJson.dependencies.PSObject.Properties) { $deps[$property.Name] = $property.Value }
         $deps[$PackageName] = $spec
@@ -291,14 +298,30 @@ try {
   } else {
     $problems = @()
     if (-not $SkipSeed) {
+      # The launcher compares the inventory against every file under seed (integrity.json
+      # itself excluded) and fails on a single extra, missing or changed file. Mirror that
+      # comparison in both directions; checking only the records would miss a stray backup.
       $integrity = Read-Json (Join-Path $seed 'integrity.json')
-      foreach ($record in $integrity.files) {
-        $absolute = Join-Path $seed ($record.path -replace '/', '\')
-        if (-not (Test-Path -LiteralPath $absolute)) { $problems += "missing seed file $($record.path)"; continue }
-        $size = (Get-Item -LiteralPath $absolute).Length
-        if ($size -ne $record.bytes) { $problems += "size mismatch $($record.path) ($size != $($record.bytes))" }
-        if ((Get-Sha256 $absolute) -ne $record.sha256) { $problems += "sha256 mismatch $($record.path)" }
+      $recorded = @{}
+      foreach ($record in $integrity.files) { $recorded[$record.path] = $record }
+      $actual = @{}
+      foreach ($file in (Get-ChildItem -LiteralPath $seed -Recurse -File -Force)) {
+        $relative = ($file.FullName.Substring($seed.Length + 1) -replace '\\', '/')
+        if ($relative -eq 'integrity.json') { continue }
+        if ($file.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $problems += "seed contains a symbolic link: $relative" }
+        $actual[$relative] = $file
       }
+      foreach ($relative in $actual.Keys) {
+        if (-not $recorded.ContainsKey($relative)) { $problems += "seed carries a file the inventory does not record: $relative" }
+      }
+      foreach ($relative in $recorded.Keys) {
+        $record = $recorded[$relative]
+        if (-not $actual.ContainsKey($relative)) { $problems += "missing seed file $relative"; continue }
+        $file = $actual[$relative]
+        if ($file.Length -ne $record.bytes) { $problems += "size mismatch $relative ($($file.Length) != $($record.bytes))" }
+        if ((Get-Sha256 $file.FullName) -ne $record.sha256) { $problems += "sha256 mismatch $relative" }
+      }
+      if ($actual.Count -ne $recorded.Count) { $problems += "seed inventory count mismatch (files $($actual.Count) != records $($recorded.Count))" }
       $seedManifest = Read-Json (Join-Path $seed 'package.json')
       if (-not $seedManifest.dsh.profile.bundles -contains $PackageName) { $problems += "seed package.json is missing the $PackageName bundle" }
       $listing = (& tar -tf (Join-Path $seed 'profile-files.tar')) -join "`n"
@@ -320,7 +343,7 @@ try {
     }
     if ($problems.Count -gt 0) {
       foreach ($problem in $problems) { Write-Warn $problem }
-      throw "integration finished with $($problems.Count) verification problem(s); restore the .bak-* files if the app misbehaves"
+      throw "integration finished with $($problems.Count) verification problem(s); restore the files backed up under $script:backupRoot if the app misbehaves"
     }
     Write-Note 'seed integrity, bundle entries, tarball contents and module resolution all check out'
     Write-Host ''

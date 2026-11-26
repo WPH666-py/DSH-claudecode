@@ -52,16 +52,20 @@ resources/seed/profile-links.json     指向内容寻址 pnpm store 的硬链接
 | `data/.agent-presets/agent-claudecode/` | 预设（`preset.yml` + `agent.cordis.yml`） |
 | `data/skills/claudecode-workflow/` | 技能 |
 
-每个被改的文件旁边都会留一个 `.bak-<时间戳>`。出问题就把它改回去，或者直接删掉 `node_modules/agent-claudecode` 并从 `package.json` 里移除两项。
+被改的文件都会备份到 `data\backups\agent-claudecode\<时间戳>\`，以应用根目录为基准的相对路径存放（例如 `resources\seed\package.json`、`data\profiles\desktop\package.json`）。**备份不会留在 `resources/seed` 里**：启动器会把 seed 下除 `integrity.json` 外的每个文件都纳入清单，一个多出来的 `.bak-*` 就会让启动停在 `desktop seed: integrity verification failed`。出问题就从备份目录取回，或者直接删掉 `node_modules/agent-claudecode` 并从 `package.json` 里移除两项。
 
 ## 校验
 
-脚本最后会自己验一遍，任何一条不成立都会以非零状态退出并列出问题：
+脚本最后会按启动器的口径自己验一遍，任何一条不成立都会以非零状态退出并列出问题：
 
-- seed 里每个 integrity 记录的文件都存在、大小一致、sha256 一致；
+- seed 的实际文件清单与 integrity 记录**双向完全一致**：没有未记录的文件（例如残留备份）、没有缺失、大小与 sha256 全部匹配、没有符号链接；
 - seed `package.json` 的 bundle 列表里有 `agent-claudecode`；
 - `profile-files.tar` 里确实有 `node_modules/agent-claudecode/lib/workflow.js`，且只有一份；
 - 运行中 profile 的依赖、bundle、`node_modules` 都在位，且 node 能解析到它。
+
+## 已知边界：启动器的“恢复插件”尝试
+
+HarScience 的启动器把随包插件写死在 `shell.mjs` 的静态清单里，我们的插件不在那张表上。因此对一个**已有 profile** 的安装做升级时，启动器重建 profile 后会把本插件当作“用户后装的插件”，尝试 `pnpm add agent-claudecode@1.0.0 --offline`。离线镜像里没有它的 registry 元数据，这一步会在运行日志里留下一行 `could not restore agent-claudecode`，随后继续启动；插件本身与 bundle 已经从 seed 的 tar 里落地，模式照常可用。全新安装（没有旧 profile）不会触发这一步。修改厂商的 `shell.mjs` 不可取：应用升级会覆盖它。我们不去动它。
 
 ## 已知边界
 
