@@ -1,0 +1,3 @@
+name: Agent-ClaudeCode
+description: "Claude Code 工作流模式：选中即让 Harness 工作流下线，由 Claude Code 的 agent loop（探索→决策→工具→观察→验证）接管系统提示与工具协议；工具词表已翻译到本机 Harness 工具，并可经 claudecode_backend 委派给 Claude Code CLI、Codex CLI 或回落到 Harness 原生循环。"
+order: 100

@@ -1,0 +1,5 @@
+node_modules/
+.tools/
+dist/*.tgz.tmp
+*.log
+.DS_Store

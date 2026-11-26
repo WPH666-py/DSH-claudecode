@@ -1,0 +1,20 @@
+{
+  "id": "agent-claudecode",
+  "version": "1.0.0",
+  "main": "lib/index.js",
+  "description": "Agent-ClaudeCode mode: the Claude Code agent loop replaces the Harness workflow, with claude / codex / harness backend adapters. Ships the preset plus the claudecode-workflow skill.",
+  "engines": {
+    "dsh": ">=0.0.1"
+  },
+  "contributes": {
+    "presets": [
+      "agent-claudecode"
+    ],
+    "skills": [
+      "claudecode-workflow"
+    ],
+    "tools": [
+      "claudecode_backend"
+    ]
+  }
+}
