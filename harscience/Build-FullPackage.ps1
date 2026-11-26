@@ -55,6 +55,12 @@ Write-Host '== integrating the seed' -ForegroundColor Cyan
 $stagedData = Join-Path $staging 'HarScience\data'
 if (Test-Path -LiteralPath $stagedData) { Remove-Item -LiteralPath $stagedData -Recurse -Force }
 
+# The integration keeps a .bak-<timestamp> next to every file it rewrote. Those belong to
+# the machine that ran it, not to the distribution, and the seed tar's backup alone is
+# hundreds of megabytes.
+Get-ChildItem -LiteralPath (Join-Path $staging 'HarScience') -Recurse -File -Filter '*.bak-*' |
+  Remove-Item -Force
+
 Write-Host "== packing $Output" -ForegroundColor Cyan
 if (Test-Path -LiteralPath $Output) { Remove-Item -LiteralPath $Output -Force }
 Push-Location $staging
