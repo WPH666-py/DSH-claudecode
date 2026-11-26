@@ -41,6 +41,23 @@ falls back to the native loop. It never installs silently and never swaps backen
 failure: the model has to know which agent touched the workspace, because it reviews that
 agent's diff.
 
+## Built into HarScience
+
+HarScience does not install the profile at launch. It materialises the profile tree from
+`resources/seed/profile-files.tar` plus `profile-links.json`, and verifies
+`integrity.json` first. A package declared in the seed but absent from those artifacts does
+not degrade: the materialiser throws on the first missing link.
+
+`harscience/` does the three edits in the order that makes that safe (declare, append into
+the tar, recompute integrity), with backups and a self-check:
+
+```powershell
+.\harscience\Integrate-AgentClaudeCode.ps1 -PluginTgz .\dist\agent-claudecode-1.0.0.tgz
+```
+
+See [harscience/README.md](harscience/README.md) for every file it touches;
+`harscience\Build-FullPackage.ps1` repacks a whole application tree.
+
 ## What the mode actually changes
 
 `lib/composition.mjs` is the single source of truth. `npm run build` generates:

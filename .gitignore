@@ -1,5 +1,8 @@
 node_modules/
 .tools/
 dist/*.tgz.tmp
+dist/harscience-pkg/
+dist/HarScience-AgentClaudeCode-*-win-x64.zip
 *.log
 .DS_Store
+.dsh-knowledge/

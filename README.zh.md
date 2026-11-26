@@ -45,6 +45,24 @@ dsh plugin --profile desktop add github:WPH666-py/DSH-claudecode
 
 外部后端跑在同一个工作区、走它自己的权限体系，所以插件和提示词都要求：拿到结果先看 diff，再自己跑检查。
 
+## 内置到 HarScience
+
+HarScience 启动时不跑 `pnpm install`：它按 `resources/seed/profile-files.tar` + `profile-links.json`
+把 profile 树**物化**出来，动手前先按 `integrity.json` 校验。所以"内置"不是把 tgz 丢进 plugins 目录就完事——声明了依赖但树里没有这个包，物化器会在第一个缺失链接上抛错。
+
+`harscience/` 里的安装器按正确顺序做全三步（声明 → 追加进 tar → 重算 integrity），并自带校验与备份：
+
+```powershell
+# 装进当前用户的 HarScience
+.\harscience\Integrate-AgentClaudeCode.ps1 -PluginTgz .\dist\agent-claudecode-1.0.0.tgz
+
+# 或者双击
+harscience\apply.cmd
+```
+
+细节与它改动的每个文件见 [harscience/README.md](harscience/README.md)。重新打整包用
+`harscience\Build-FullPackage.ps1`。
+
 ## 它到底改了什么
 
 `lib/composition.mjs` 是这个模式唯一的真相来源，生成两个注册产物（`npm run build`）：
